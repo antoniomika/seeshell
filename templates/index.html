@@ -1,0 +1,46 @@
+<html>
+
+<head>
+    <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/xterm.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/fullscreen/fullscreen.min.css" />
+    <link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/themes/smoothness/jquery-ui.css" />
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/xterm.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/fullscreen/fullscreen.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/fit/fit.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/attach/attach.min.js"></script>
+
+    <style>
+        body {
+            font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+            font-size: 11px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(function() {
+            var ip = window.location.hash.substr(1) || prompt("Address:");
+
+            var websocket = new WebSocket("ws://" + window.location.hostname + ":" + window.location.port + "/ws/" + ip);
+            websocket.onopen = function(evt) {
+                term = new Terminal({
+                    cursorBlink: true,
+                    cols: 250,
+                    rows: 50
+                });
+
+                term.open(document.getElementById("terminal-container"), true);
+                term.toggleFullscreen(true);
+
+                term.attach(websocket);
+            }
+        });
+    </script>
+</head>
+<div id="terminal-container"></div>
+
+</html>
