@@ -185,7 +185,7 @@ func handleTCP(conn net.Conn) {
 		scheme = "https"
 	}
 
-	conn.Write([]byte(fmt.Sprintf("Access the RTV at %s://%s:%d/%s\r\n", scheme, *httpDomain, *httpPort, conn.RemoteAddr().String())))
+	conn.Write([]byte(fmt.Sprintf("Terminal output redirected to %s://%s:%d/%s\r\n", scheme, *httpDomain, *httpPort, conn.RemoteAddr().String())))
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(30 * time.Millisecond))
