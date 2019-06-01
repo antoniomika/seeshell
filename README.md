@@ -1,15 +1,29 @@
-SeeShell
+seeshell
 ========
 
-### A quick and easy way to send your terminal out into a browser. Example is available at ss.antoniomika.me
+## What does this do?
+seeshell let's a user output their current terminal output to a web interface using nothing other than a net client (like netcat)
 
-## How to use this software
+## How does it work?
+You use a pipe to redirect your terminal output through netcat (or Socat if you'd like bidirectional forwarding) and follow the URL that is outputted by the app.
 
-1. Use the hosted version by running `<cmd> | nc ss.antoniomika.me 30000`
-2. Build and run this code. It's as easy as:
-    1. `go get github.com/fatih/color`
-    2. `go get github.com/gorilla/mux`
-    3. `go get github.com/gorilla/websocket`
-    4. `go run main.go`
-3. The HTTP/WS server will be running at localhost:8080 and the TCP Server will be running at localhost:8081
-    1. This is changable by setting the `--http-addr` or `--tcp-addr` flags.
+## Can I run this locally?
+Sure, there are prebuilt docker containers stored in DockerHub.
+
+## ClI Flags
+```
+sh-3.2# ./seeshell -h
+Usage of ./seeshell:
+  -debug
+        Whether or not to print debug info
+  -httpaddr string
+        HTTP/WS service address (default "localhost:8080")
+  -httpdomain string
+        The domain for the service to be outputted (default "localhost")
+  -httpport int
+        What port to display (default 8080)
+  -httpsenabled
+        Whether HTTPS is enabled (reverse proxy)
+  -tcpaddr string
+        TCP service address (default "localhost:8081")
+```

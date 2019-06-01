@@ -1,44 +1,165 @@
 <html>
 
 <head>
-    <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/xterm.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/fullscreen/fullscreen.min.css" />
-    <link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/themes/smoothness/jquery-ui.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/xterm.min.css" />
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/fullscreen/fullscreen.min.css" />
 
-    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
-    <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.min.js"></script>
-    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/xterm.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/fullscreen/fullscreen.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/fit/fit.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/2.9.2/addons/attach/attach.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/xterm.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/fullscreen/fullscreen.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/fit/fit.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/attach/attach.min.js"></script>
 
     <style>
-        body {
-            font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
-            font-size: 11px;
+        body{
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif
         }
     </style>
 
     <script type="text/javascript">
-        $(function() {
-            var ip = window.location.hash.substr(1) || prompt("Address:");
-
-            var websocket = new WebSocket("ws://" + window.location.hostname + ":" + window.location.port + "/ws/" + ip);
-            websocket.onopen = function(evt) {
-                term = new Terminal({
-                    cursorBlink: true,
-                    cols: 250,
-                    rows: 50
-                });
-
-                term.open(document.getElementById("terminal-container"), true);
-                term.toggleFullscreen(true);
-
-                term.attach(websocket);
-            }
+        Terminal.applyAddon(fullscreen);
+        Terminal.applyAddon(fit);
+        Terminal.applyAddon(attach);
+        Terminal.applyAddon({
+            "__esModule": { value: true },
+            apply: function (terminalConstructor) {
+                terminalConstructor.prototype.showOverlay = function (msg, timeout) {
+                    return showOverlay(this, msg, timeout);
+                };
+            },
+            showOverlay
         });
+
+        function showOverlay(term, msg, timeout) {
+            if (!term.overlayNode_) {
+                if (!term.element)
+                    return;
+                term.overlayNode_ = document.createElement('div');
+                term.overlayNode_.style.cssText = (
+                    'border-radius: 15px;' +
+                    'font-size: xx-large;' +
+                    'opacity: 0.75;' +
+                    'padding: 0.2em 0.5em 0.2em 0.5em;' +
+                    'position: absolute;' +
+                    '-webkit-user-select: none;' +
+                    '-webkit-transition: opacity 180ms ease-in;' +
+                    '-moz-user-select: none;' +
+                    '-moz-transition: opacity 180ms ease-in;');
+
+                term.overlayNode_.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, true);
+            }
+            term.overlayNode_.style.color = "#101010";
+            term.overlayNode_.style.backgroundColor = "#f0f0f0";
+
+            term.overlayNode_.textContent = msg;
+            term.overlayNode_.style.opacity = '0.75';
+
+            if (!term.overlayNode_.parentNode)
+                term.element.appendChild(term.overlayNode_);
+
+            var divSize = term.element.getBoundingClientRect();
+            var overlaySize = term.overlayNode_.getBoundingClientRect();
+
+            term.overlayNode_.style.top =
+                (divSize.height - overlaySize.height) / 2 + 'px';
+            term.overlayNode_.style.left = (divSize.width - overlaySize.width) / 2 + 'px';
+
+            if (term.overlayTimeout_)
+                clearTimeout(term.overlayTimeout_);
+
+            if (timeout === null)
+                return;
+
+            term.overlayTimeout_ = setTimeout(function () {
+                term.overlayNode_.style.opacity = '0';
+                term.overlayTimeout_ = setTimeout(function () {
+                    if (term.overlayNode_.parentNode)
+                        term.overlayNode_.parentNode.removeChild(term.overlayNode_);
+                    term.overlayTimeout_ = null;
+                    term.overlayNode_.style.opacity = '0.75';
+                }, 200);
+            }, timeout || 1500);
+        }
+
+        function createTerminal() {
+            var term = new Terminal({
+                cursorBlink: true,
+                fontSize: 11,
+                fontFamily: '"Menlo for Powerline", Menlo, Consolas, "Liberation Mono", Courier, monospace',
+                rows: Math.floor((window.innerHeight) / 6.6),
+                theme: {
+                    foreground: '#d2d2d2',
+                    cursor: '#adadad',
+                    black: '#000000',
+                    red: '#d81e00',
+                    green: '#5ea702',
+                    yellow: '#cfae00',
+                    blue: '#427ab3',
+                    magenta: '#89658e',
+                    cyan: '#00a7aa',
+                    white: '#dbded8',
+                    brightBlack: '#686a66',
+                    brightRed: '#f54235',
+                    brightGreen: '#99e343',
+                    brightYellow: '#fdeb61',
+                    brightBlue: '#84b0d8',
+                    brightMagenta: '#bc94b7',
+                    brightCyan: '#37e6e8',
+                    brightWhite: '#f1f1f0'
+                }
+            });
+
+            term.on('resize', function (size) {
+                setTimeout(function () {
+                    term.showOverlay(size.cols + 'x' + size.rows);
+                }, 500);
+            });
+
+            term.on('title', function (data) {
+                if (data && data !== '') {
+                    document.title = data;
+                }
+            });
+
+            window.addEventListener('resize', function () {
+                clearTimeout(window.resizedFinished);
+                window.resizedFinished = setTimeout(function () {
+                    term.fit();
+                    term.resize(term.cols, Math.floor((window.innerHeight) / 6.6));
+                    connectSocket(term);
+                }, 250);
+            });
+
+            term.open(document.getElementById("terminal-container"), true);
+            term.toggleFullScreen(true);
+            term.fit();
+            term.resize(term.cols, Math.floor((window.innerHeight) / 6.6));
+            term.focus();            
+
+            connectSocket(term);
+
+            return term;
+        }
+
+        function connectSocket(term) {
+            if (window.wsConn) {
+                wsConn.close();
+            }
+
+            window.wsConn = new WebSocket((window.location.protocol == "http:" ? "ws://" : "wss://") + window.location.host + window.location.pathname + "/ws");
+            window.wsConn.onopen = function (evt) {
+                term.attach(window.wsConn);
+            }
+        }
+
+        document.onreadystatechange = () => {
+            if (document.readyState === 'complete') {
+                createTerminal();
+            }
+        };
     </script>
 </head>
 <div id="terminal-container"></div>

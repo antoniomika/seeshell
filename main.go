@@ -1,146 +1,150 @@
 package main
 
 import (
+	"bufio"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
-	"text/template"
+	"runtime"
+	"sync"
 
-	"github.com/fatih/color"
-	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"net"
 	"time"
-	"sync"
-	"bufio"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
-var httpAddr = flag.String("http-addr", "localhost:8080", "HTTP/WS service address")
-var tcpAddr = flag.String("tcp-add", "localhost:8081", "TCP service address")
-
-var indexTemplate = template.Must(template.ParseFiles("templates/index.html"))
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+type tcpConnData struct {
+	Conn   net.Conn
+	Buffer []byte
 }
 
-var webSocketClients = make(map[string][]*websocket.Conn)
-var tcpClients = make(map[string]net.Conn)
-
-var mutex = &sync.Mutex{}
-
-func logHTTP(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		color.Set(color.FgYellow)
-		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
-		color.Unset()
-
-		handler.ServeHTTP(w, r)
-	})
+type wsConnData struct {
+	Conn        *websocket.Conn
+	Initialized bool
 }
+
+var (
+	debug        = flag.Bool("debug", false, "Whether or not to print debug info")
+	httpDomain   = flag.String("httpdomain", "localhost", "The domain for the service to be outputted")
+	httpsEnabled = flag.Bool("httpsenabled", false, "Whether HTTPS is enabled (reverse proxy)")
+	httpPort     = flag.Int("httpport", 8080, "What port to display")
+	httpAddr     = flag.String("httpaddr", "localhost:8080", "HTTP/WS service address")
+	tcpAddr      = flag.String("tcpaddr", "localhost:8081", "TCP service address")
+	upgrader     = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	wsConns  = &sync.Map{}
+	tcpConns = &sync.Map{}
+)
 
 func main() {
 	flag.Parse()
-	log.SetFlags(0)
 
-	r := mux.NewRouter()
+	if *debug {
+		go func() {
+			for {
+				log.Println(runtime.NumGoroutine())
 
-	r.HandleFunc("/", indexHandler)
-	r.HandleFunc("/ws/{id}", wsHandler)
+				log.Println("TCP CONNS")
+				tcpConns.Range(func(key, val interface{}) bool {
+					log.Println(key)
+					return true
+				})
 
-	http.Handle("/", r)
+				log.Println("WS CONNS1")
+				wsConns.Range(func(key, val interface{}) bool {
+					log.Println(key)
+					val2 := val.(*sync.Map)
 
-	color.Set(color.FgGreen)
-	log.Println("Running HTTP and WS server on:", *httpAddr)
-	color.Unset()
+					log.Println("WS CONNS2")
+					val2.Range(func(key, val interface{}) bool {
+						log.Println(key)
+						return true
+					})
+					return true
+				})
 
-	color.Set(color.FgRed)
-	go http.ListenAndServe(*httpAddr, logHTTP(http.DefaultServeMux))
-	color.Unset()
+				time.Sleep(2 * time.Second)
+			}
+		}()
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
-	color.Set(color.FgGreen)
-	log.Println("Running TCP server on:", *tcpAddr)
-	color.Unset()
+	r := gin.Default()
+	r.LoadHTMLGlob("templates/*")
 
-	startTCP()
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", nil)
+	})
+
+	r.GET("/:id", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", c.Params)
+	})
+
+	r.GET("/:id/ws", wsHandler)
+
+	go startTCP()
+	r.Run(*httpAddr)
 }
 
-func indexHandler(w http.ResponseWriter, r *http.Request) {
-	indexTemplate.Execute(w, r.Host)
-}
+func wsHandler(c *gin.Context) {
+	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 
-func wsHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	pathKey := vars["id"]
+	connData := &wsConnData{
+		Conn: wsConn,
+	}
 
-	c, err := upgrader.Upgrade(w, r, nil)
-
-	color.Set(color.FgBlue)
-	log.Println("New WebSocket Connection From:", r.RemoteAddr)
-	log.Println("Path:", pathKey)
-	color.Unset()
+	pathKey := c.Param("id")
 
 	if err != nil {
-		color.Set(color.FgRed)
-		log.Println("Upgrade error:", err)
-		color.Unset()
 		return
 	}
 
-	mutex.Lock()
+	conns, _ := wsConns.LoadOrStore(pathKey, &sync.Map{})
+	addressedWSConns := conns.(*sync.Map)
 
-	if _, ok := webSocketClients[pathKey]; ok {
-		webSocketClients[pathKey] = append(webSocketClients[pathKey], c)
-	} else {
-		webSocketClients[pathKey] = []*websocket.Conn{c}
-	}
-
-	mutex.Unlock()
-
-	for {
-		_, _, err := c.ReadMessage()
-
-		if err != nil {
-			color.Set(color.FgRed)
-			log.Println("wsReader error:", err)
-			color.Unset()
-
-			break
-		}
-
-		// This will redirect input from the web based terminal to the client (netcat).
-		// If netcat bidirectionally opened stdin and stdout, you could control your process with that.
-		/*if val, ok := tcpClients[pathKey]; ok {
-			writer := bufio.NewWriter(val)
-
-			writer.Write(data)
-			writer.Flush()
-		}*/
-	}
+	addressedWSConns.Store(wsConn.RemoteAddr().String(), connData)
 
 	defer func() {
-		c.Close()
+		addressedWSConns.Delete(wsConn.RemoteAddr().String())
 
-		color.Set(color.FgMagenta)
-		log.Println("Closed WebSocket Connection From:", r.RemoteAddr)
-		color.Unset()
+		count := 0
+		addressedWSConns.Range(func(key, val interface{}) bool {
+			count++
+			return true
+		})
 
-		mutex.Lock()
+		if count == 0 {
+			wsConns.Delete(pathKey)
+		}
+		wsConn.Close()
+	}()
 
-		if _, ok := webSocketClients[pathKey]; ok {
-			newclients := []*websocket.Conn{}
-			for _, varclient := range webSocketClients[pathKey] {
-				if c != varclient {
-					newclients = append(newclients, varclient)
-				}
-			}
-			webSocketClients[pathKey] = newclients
-		} else {
-			webSocketClients[pathKey] = []*websocket.Conn{}
+	if tcpClientInterface, ok := tcpConns.Load(pathKey); ok {
+		tcpClient := tcpClientInterface.(*tcpConnData)
+
+		w, err := wsConn.NextWriter(websocket.TextMessage)
+		if err != nil {
+			return
 		}
 
-		mutex.Unlock()
-	}()
+		w.Write(tcpClient.Buffer)
+		connData.Initialized = true
+
+		for {
+			_, data, err := wsConn.ReadMessage()
+			if err != nil {
+				break
+			}
+
+			tcpClient.Conn.Write(data)
+		}
+	}
 }
 
 func startTCP() {
@@ -157,67 +161,66 @@ func startTCP() {
 			continue
 		}
 
-		color.Set(color.FgBlue)
-		log.Println("New TCPServer Connection From:", conn.RemoteAddr().String())
-		color.Unset()
-
 		go handleTCP(conn)
 	}
 }
 
 func handleTCP(conn net.Conn) {
-	tcpClients[conn.RemoteAddr().String()] = conn
-
 	conn.SetReadDeadline(time.Now())
 	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
 
-	writer.Write([]byte("Access the RTV at http://" + *httpAddr + "/#" + conn.RemoteAddr().String() + "\n"))
-	writer.Flush()
-
-	for {
-		zero := make([]byte, 0)
-
-		if _, err := conn.Read(zero); err != nil {
-			log.Println("Foobbar", err)
-			break
-		} else {
-			conn.SetReadDeadline(time.Now().Add(30 * time.Millisecond))
-		}
-
-		mutex.Lock()
-
-		if data, _ := reader.Peek(1); len(data) > 0 {
-			if val, ok := webSocketClients[conn.RemoteAddr().String()]; ok {
-				data, _, err := reader.ReadLine()
-				if err != nil {
-					color.Set(color.FgRed)
-					log.Println("TCPReader error:", err)
-					color.Unset()
-				}
-
-				for _, wsClient := range val {
-					wsWriter, err := wsClient.NextWriter(websocket.TextMessage)
-					if err != nil {
-						color.Set(color.FgRed)
-						log.Println("wsWriter error:", err)
-						color.Unset()
-					} else {
-						wsWriter.Write(data)
-						wsWriter.Close()
-					}
-				}
-			}
-		}
-
-		mutex.Unlock()
+	setConn := &tcpConnData{
+		Conn: conn,
 	}
 
-	defer func() {
-		conn.Close()
+	tcpConns.Store(conn.RemoteAddr().String(), setConn)
 
-		color.Set(color.FgMagenta)
-		log.Println("Closed TCPServer Connection From:", conn.RemoteAddr().String())
-		color.Unset()
+	defer func() {
+		tcpConns.Delete(conn.RemoteAddr().String())
+		conn.Close()
 	}()
+
+	scheme := "http"
+	if *httpsEnabled {
+		scheme = "https"
+	}
+
+	conn.Write([]byte(fmt.Sprintf("Access the RTV at %s://%s:%d/%s\r\n", scheme, *httpDomain, *httpPort, conn.RemoteAddr().String())))
+
+	for {
+		conn.SetReadDeadline(time.Now().Add(30 * time.Millisecond))
+
+		data, err := reader.Peek(1)
+
+		neterr, ok := err.(net.Error)
+		if err != nil {
+			if ok && neterr.Timeout() {
+				continue
+			}
+			break
+		}
+
+		if len(data) > 0 {
+			realData, err := ioutil.ReadAll(reader)
+
+			if len(realData) == 0 && err != nil {
+				log.Println(err)
+				break
+			}
+
+			setConn.Buffer = append(setConn.Buffer, realData...)
+
+			if addressedWSConnsInterface, ok := wsConns.Load(conn.RemoteAddr().String()); ok {
+				addressedWSConns := addressedWSConnsInterface.(*sync.Map)
+
+				addressedWSConns.Range(func(key, value interface{}) bool {
+					wsClient := value.(*wsConnData)
+					if wsClient.Initialized {
+						wsClient.Conn.WriteMessage(websocket.TextMessage, realData)
+					}
+					return true
+				})
+			}
+		}
+	}
 }
