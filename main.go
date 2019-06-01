@@ -2,12 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync"
 
 	"net"
@@ -28,12 +29,14 @@ type wsConnData struct {
 }
 
 var (
+	secretPath   = flag.String("secretpath", "", "The path to look for to print session ids, empty string to disable")
 	debug        = flag.Bool("debug", false, "Whether or not to print debug info")
 	httpDomain   = flag.String("httpdomain", "localhost", "The domain for the service to be outputted")
 	httpsEnabled = flag.Bool("httpsenabled", false, "Whether HTTPS is enabled (reverse proxy)")
 	httpPort     = flag.Int("httpport", 8080, "What port to display")
 	httpAddr     = flag.String("httpaddr", "localhost:8080", "HTTP/WS service address")
 	tcpAddr      = flag.String("tcpaddr", "localhost:8081", "TCP service address")
+	tcpTransAddr = flag.String("tcptransaddr", "localhost:8082", "TCP transparent proxy service address")
 	upgrader     = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -68,7 +71,7 @@ func main() {
 					return true
 				})
 
-				time.Sleep(2 * time.Second)
+				time.Sleep(10 * time.Second)
 			}
 		}()
 	} else {
@@ -83,12 +86,27 @@ func main() {
 	})
 
 	r.GET("/:id", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", c.Params)
+		switch id := c.Param("id"); id {
+		case *secretPath:
+			conns := []string{}
+			tcpConns.Range(func(key, val interface{}) bool {
+				addr := key.(string)
+				conns = append(conns, addr)
+				return true
+			})
+
+			c.HTML(http.StatusOK, "listpage.html", conns)
+		case "":
+			fallthrough
+		default:
+			c.HTML(http.StatusOK, "index.html", c)
+		}
 	})
 
 	r.GET("/:id/ws", wsHandler)
 
-	go startTCP()
+	go startTCP(*tcpAddr, false)
+	go startTCP(*tcpTransAddr, true)
 	r.Run(*httpAddr)
 }
 
@@ -100,6 +118,12 @@ func wsHandler(c *gin.Context) {
 	}
 
 	pathKey := c.Param("id")
+	keyPress := false
+
+	if strings.Contains(pathKey, "show") {
+		pathKey = strings.ReplaceAll(pathKey, "show", "")
+		keyPress = true
+	}
 
 	if err != nil {
 		return
@@ -128,12 +152,7 @@ func wsHandler(c *gin.Context) {
 	if tcpClientInterface, ok := tcpConns.Load(pathKey); ok {
 		tcpClient := tcpClientInterface.(*tcpConnData)
 
-		w, err := wsConn.NextWriter(websocket.TextMessage)
-		if err != nil {
-			return
-		}
-
-		w.Write(tcpClient.Buffer)
+		wsConn.WriteMessage(websocket.TextMessage, tcpClient.Buffer)
 		connData.Initialized = true
 
 		for {
@@ -142,13 +161,17 @@ func wsHandler(c *gin.Context) {
 				break
 			}
 
+			if keyPress {
+				wsConn.WriteMessage(websocket.TextMessage, data)
+			}
+
 			tcpClient.Conn.Write(data)
 		}
 	}
 }
 
-func startTCP() {
-	socket, err := net.Listen("tcp", *tcpAddr)
+func startTCP(addr string, transparent bool) {
+	socket, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,11 +184,11 @@ func startTCP() {
 			continue
 		}
 
-		go handleTCP(conn)
+		go handleTCP(conn, transparent)
 	}
 }
 
-func handleTCP(conn net.Conn) {
+func handleTCP(conn net.Conn, transparent bool) {
 	conn.SetReadDeadline(time.Now())
 	reader := bufio.NewReader(conn)
 
@@ -180,12 +203,14 @@ func handleTCP(conn net.Conn) {
 		conn.Close()
 	}()
 
-	scheme := "http"
-	if *httpsEnabled {
-		scheme = "https"
-	}
+	if !transparent {
+		scheme := "http"
+		if *httpsEnabled {
+			scheme = "https"
+		}
 
-	conn.Write([]byte(fmt.Sprintf("Terminal output redirected to %s://%s:%d/%s\r\n", scheme, *httpDomain, *httpPort, conn.RemoteAddr().String())))
+		conn.Write([]byte(fmt.Sprintf("Terminal output redirected to %s://%s:%d/%s\r\n", scheme, *httpDomain, *httpPort, conn.RemoteAddr().String())))
+	}
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(30 * time.Millisecond))
@@ -201,12 +226,15 @@ func handleTCP(conn net.Conn) {
 		}
 
 		if len(data) > 0 {
-			realData, err := ioutil.ReadAll(reader)
+			realData := make([]byte, 256)
+			n, err := reader.Read(realData)
 
-			if len(realData) == 0 && err != nil {
+			if n == 0 && err != nil {
 				log.Println(err)
 				break
 			}
+			realData = bytes.ReplaceAll(realData, []byte{'\r', '\n'}, []byte{'\n'})
+			realData = bytes.ReplaceAll(realData, []byte{'\n'}, []byte{'\r', '\n'})
 
 			setConn.Buffer = append(setConn.Buffer, realData...)
 

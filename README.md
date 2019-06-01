@@ -24,6 +24,10 @@ Usage of ./seeshell:
         What port to display (default 8080)
   -httpsenabled
         Whether HTTPS is enabled (reverse proxy)
+  -secretpath string
+        The path to look for to print session ids, empty string to disable
   -tcpaddr string
         TCP service address (default "localhost:8081")
+  -tcptransaddr string
+        TCP transparent proxy service address (default "localhost:8082")
 ```

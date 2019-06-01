@@ -1,0 +1,15 @@
+<html>
+    <head>
+        <title>seeshell list</title>
+    </head>
+
+    <body>
+        <ul>
+            {{ with . }}
+                {{ range . }}
+                    <li><a href="/{{.}}">{{.}}</a></li>
+                {{ end }} 
+            {{ end }}
+        </ul>
+    </body>
+</html>
