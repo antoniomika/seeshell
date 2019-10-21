@@ -1,11 +1,12 @@
-FROM golang:1.12.5-alpine as builder
+FROM golang:1.13.2-alpine as builder
 LABEL maintainer="Antonio Mika <me@antoniomika.me>"
 
-RUN apk add --no-cache git gcc musl-dev bash gnupg
-
 ENV GOCACHE /gocache
+ENV CGO_ENABLED 0
 
-WORKDIR /usr/local/go/src/github.com/antoniomika/seeshell
+WORKDIR /app
+
+RUN apk add --no-cache git
 
 COPY go.mod .
 COPY go.sum .
@@ -17,18 +18,11 @@ COPY . .
 RUN go install
 RUN go test -i ./...
 
-FROM alpine
+FROM scratch
 LABEL maintainer="Antonio Mika <me@antoniomika.me>"
 
-RUN apk update \
-        && apk upgrade \
-        && apk add --no-cache \
-        ca-certificates \
-        && update-ca-certificates 2>/dev/null || true
+WORKDIR /app
+COPY --from=builder /app/templates /app/templates
+COPY --from=builder /go/bin/seeshell /app/seeshell
 
-COPY --from=builder /usr/local/go/src/github.com/antoniomika/seeshell /seeshell
-COPY --from=builder /go/bin/seeshell /seeshell/seeshell
-
-WORKDIR /seeshell
-
-ENTRYPOINT ["/seeshell/seeshell"]
+ENTRYPOINT ["/app/seeshell"]
