@@ -1,1 +1,12 @@
-seeshell
+/.dockerignore
+/Dockerfile
+/Dockerfile.buildkit
+/.git/
+/.github/
+/.gitignore
+/.goreleaser.yml
+/dist/
+/seeshell
+/.vscode/
+/__debug_bin
+/.DS_Store

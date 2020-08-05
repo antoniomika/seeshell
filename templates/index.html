@@ -1,18 +1,21 @@
 <html>
 
 <head>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/xterm.min.css" />
-    <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/fullscreen/fullscreen.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/xterm.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/addons/fullscreen/fullscreen.min.css" />
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/xterm.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/fullscreen/fullscreen.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/fit/fit.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.13.2/addons/attach/attach.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/xterm.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/addons/fullscreen/fullscreen.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/addons/fit/fit.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/addons/attach/attach.min.js"></script>
 
     <style>
-        body{
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif
+        @font-face {
+            font-family: Sauce Code Pro;
+            src: url(/static/fonts/sauce-code-pro.ttf);
+        }
+        body {
+            font-family: "Sauce Code Pro";
         }
     </style>
 
@@ -88,7 +91,7 @@
             var term = new Terminal({
                 cursorBlink: true,
                 fontSize: 11,
-                fontFamily: '"Menlo for Powerline", Menlo, Consolas, "Liberation Mono", Courier, monospace',
+                fontFamily: '"Sauce Code Pro"',
                 rows: Math.floor((window.innerHeight) / 6.6),
                 theme: {
                     foreground: '#d2d2d2',
@@ -124,14 +127,16 @@
                 }
             });
 
-            window.addEventListener('resize', function () {
+            var doResize = function () {
                 clearTimeout(window.resizedFinished);
                 window.resizedFinished = setTimeout(function () {
                     term.fit();
                     term.resize(term.cols, Math.floor((window.innerHeight) / 6.6));
                     connectSocket(term);
                 }, 250);
-            });
+            };
+
+            window.addEventListener('resize', doResize);
 
             term.open(document.getElementById("terminal-container"), true);
             term.toggleFullScreen(true);
@@ -139,7 +144,8 @@
             term.resize(term.cols, Math.floor((window.innerHeight) / 6.6));
             term.focus();            
 
-            connectSocket(term);
+            doResize();
+            setTimeout(doResize, 250);
 
             return term;
         }

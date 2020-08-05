@@ -1,0 +1,18 @@
+config: config.yml
+data-directory: deploy/data/
+debug: false
+http-address: localhost:8080
+http-domain: localhost
+http-port: 8080
+https-enabled: false
+log-to-file: false
+log-to-file-compress: false
+log-to-file-max-age: 28
+log-to-file-max-backups: 3
+log-to-file-max-size: 500
+log-to-file-path: /tmp/seeshell.log
+log-to-stdout: true
+secret-path: ""
+tcp-address: localhost:8081
+tcp-transparent-address: localhost:8082
+time-format: 2006/01/02 - 15:04:05

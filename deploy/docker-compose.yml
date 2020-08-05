@@ -1,0 +1,13 @@
+version: '3.7'
+
+services:
+  seeshell:
+    image: antoniomika/seeshell:latest
+    container_name: seeshell
+    ports:
+      - 8080:8080
+      - 8081:8081
+    command: |
+      --http-address=:8080
+      --tcp-address=:8081
+    restart: always
